@@ -1,4 +1,5 @@
-export const host = "https://snappy-some-git-main-jui-mandals-projects.vercel.app/";
+export const host = process.env.REACT_APP_LOCALHOST_KEY;
+
 export const loginRoute = `${host}/api/auth/login`;
 export const registerRoute = `${host}/api/auth/register`;
 export const logoutRoute = `${host}/api/auth/logout`;
