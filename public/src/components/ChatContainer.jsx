@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from "react";
 import styled from "styled-components";
 import ChatInput from "./ChatInput";
 import Logout from "./Logout";
-import { v4 as uuidv4 } from "uuid";
 import axios from "axios";
 import { sendMessageRoute, recieveMessageRoute } from "../utils/APIRoutes";
 
@@ -11,60 +10,79 @@ export default function ChatContainer({ currentChat, socket }) {
   const scrollRef = useRef();
   const [arrivalMessage, setArrivalMessage] = useState(null);
 
-  useEffect(async () => {
-    const data = await JSON.parse(
-      localStorage.getItem(process.env.REACT_APP_LOCALHOST_KEY)
-    );
-    const response = await axios.post(recieveMessageRoute, {
-      from: data._id,
-      to: currentChat._id,
-    });
-    setMessages(response.data);
-  }, [currentChat]);
-
+  // Fetch messages when currentChat changes
   useEffect(() => {
-    const getCurrentChat = async () => {
-      if (currentChat) {
-        await JSON.parse(
+    const fetchMessages = async () => {
+      try {
+        const data = await JSON.parse(
           localStorage.getItem(process.env.REACT_APP_LOCALHOST_KEY)
-        )._id;
+        );
+        const response = await axios.post(recieveMessageRoute, {
+          from: data._id,
+          to: currentChat._id,
+        });
+        setMessages(response.data);
+      } catch (error) {
+        console.error("Error fetching messages:", error);
+        setMessages([]); // Fallback to an empty array
       }
     };
-    getCurrentChat();
+
+    if (currentChat) {
+      fetchMessages();
+    }
   }, [currentChat]);
 
+  // Listen for incoming messages via Socket.IO
+  useEffect(() => {
+    if (socket.current) {
+      socket.current.on("msg-receive", (data) => {
+        setArrivalMessage({ fromSelf: false, message: data.message });
+      });
+
+      // Cleanup the event listener on unmount
+      return () => {
+        if (socket.current) {
+          socket.current.off("msg-receive");
+        }
+      };
+    }
+  }, []);
+
+  // Append arrivalMessage to messages
+  useEffect(() => {
+    if (arrivalMessage) {
+      setMessages((prev) => [...prev, arrivalMessage]);
+      setArrivalMessage(null); // Reset arrivalMessage after adding it
+    }
+  }, [arrivalMessage]);
+
+  // Handle sending messages
   const handleSendMsg = async (msg) => {
     const data = await JSON.parse(
       localStorage.getItem(process.env.REACT_APP_LOCALHOST_KEY)
     );
+
+    // Emit the message via Socket.IO
     socket.current.emit("send-msg", {
       to: currentChat._id,
       from: data._id,
       msg,
     });
+
+    // Add the sent message to the messages state
+    const newMessage = { fromSelf: true, message: msg };
+    setMessages((prev) => [...prev, newMessage]);
+
+    // Send the message to the server
     await axios.post(sendMessageRoute, {
       from: data._id,
       to: currentChat._id,
       message: msg,
     });
-
-    const msgs = [...messages];
-    msgs.push({ fromSelf: true, message: msg });
-    setMessages(msgs);
   };
 
-  useEffect(() => {
-    if (socket.current) {
-      socket.current.on("msg-recieve", (msg) => {
-        setArrivalMessage({ fromSelf: false, message: msg });
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    arrivalMessage && setMessages((prev) => [...prev, arrivalMessage]);
-  }, [arrivalMessage]);
-
+  // Scroll to the latest message
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -86,15 +104,18 @@ export default function ChatContainer({ currentChat, socket }) {
         <Logout />
       </div>
       <div className="chat-messages">
-        {messages.map((message) => {
+        {messages.map((message, index) => {
           return (
-            <div ref={scrollRef} key={uuidv4()}>
+            <div
+              key={index} // Use index or a unique ID
+              ref={index === messages.length - 1 ? scrollRef : null}
+            >
               <div
                 className={`message ${
                   message.fromSelf ? "sended" : "recieved"
                 }`}
               >
-                <div className="content ">
+                <div className="content">
                   <p>{message.message}</p>
                 </div>
               </div>

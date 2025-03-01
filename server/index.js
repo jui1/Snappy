@@ -46,17 +46,44 @@ const io = socket(server, {
   },
 });
 
+// Global variable to store online users
 global.onlineUsers = new Map();
+
+// Socket.IO connection handler
 io.on("connection", (socket) => {
-  global.chatSocket = socket;
+  console.log("New client connected:", socket.id);
+
+  // Add user to onlineUsers map
   socket.on("add-user", (userId) => {
     onlineUsers.set(userId, socket.id);
+    console.log(`User ${userId} connected with socket ID: ${socket.id}`);
   });
 
+  // Handle sending messages
   socket.on("send-msg", (data) => {
     const sendUserSocket = onlineUsers.get(data.to);
     if (sendUserSocket) {
-      socket.to(sendUserSocket).emit("msg-receive", data.msg);
+      // Emit the message to the recipient
+      socket.to(sendUserSocket).emit("msg-receive", {
+        message: data.msg,
+        from: data.from, // Include the sender's ID
+      });
+      console.log(`Message sent from ${data.from} to ${data.to}: ${data.msg}`);
+    } else {
+      console.log(`User ${data.to} is offline.`);
+    }
+  });
+
+  // Handle client disconnection
+  socket.on("disconnect", () => {
+    console.log("Client disconnected:", socket.id);
+    // Remove user from onlineUsers map
+    for (const [userId, socketId] of onlineUsers.entries()) {
+      if (socketId === socket.id) {
+        onlineUsers.delete(userId);
+        console.log(`User ${userId} disconnected.`);
+        break;
+      }
     }
   });
 });
